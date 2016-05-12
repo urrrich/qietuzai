@@ -9,9 +9,8 @@
 .row { margin-top: 20px; }
 .thumbnail{height:250px;overflow:hidden;background:#eee}
 #footer{ text-align:center}
+.loading{display:none}
 </style>
-<script src="bower_components/jquery/dist/jquery.min.js"></script>
-<script type="text/javascript" src="lib/psd.min.js"></script>
 </head>
 <body>
 <div class="container"> 
@@ -30,21 +29,45 @@
   <!-- 表单 -->
   <div class="row">
     <form class="col-md-12">
-      <button class="btn btn-default btn-lg" type="button">导出所有图层</button>
-      <!--<label style="margin-left:20px;">
-        <input type="checkbox">
-        包含@2x和@3x切图</label>-->
+      <button id="export_all" class="btn btn-default btn-lg" type="button" style="margin-right:20px;">导出所有图层</button>
+      <span class="psd_info"></span>
+      <label>
+        <input type="checkbox" disabled>
+        @2x和@3x切图</label>
+        <span class="loading">正在解析中……</span>
     </form>
   </div>
   <!-- 图层 -->
   <div class="row" id="layer"></div>
 </div>
+<script src="bower_components/jquery/dist/jquery.min.js"></script>
+<script type="text/javascript" src="lib/psd.min.js"></script>
+<script type="text/javascript" src="lib/zip.min.js"></script>
+<script type="text/javascript" src="lib/filesaver.js"></script>
 <script type="text/javascript">
   (function () {
+	 
+	/*	
+		1、拖入PSD,解析成json格式
+		2、图片裁剪@2x,@3x
+    3、单张图片导出
+    4、图片批量导出zip
+    ---------
+	*/
+	  
     var PSD = require('psd');
-
-    document.getElementById('dropzone').addEventListener('dragover', onDragOver, true);
-    document.getElementById('dropzone').addEventListener('drop', onDrop, true);
+    
+    var dropArea = document.getElementById('dropzone')
+    
+    var imgData = []
+        
+    
+    dropArea.addEventListener('dragover', onDragOver, true);
+    dropArea.addEventListener('drop', onDrop, true);
+    
+    $('#export_all').click(function(){  
+      export_all()
+    })
 
     function onDragOver(e) {
       e.stopPropagation();
@@ -52,30 +75,64 @@
       e.dataTransfer.dropEffect = 'copy';
     }
 
-    function onDrop(e) {
-      e.stopPropagation();
-      e.preventDefault();
+   function onDrop(e) {
+     e.stopPropagation();
+     e.preventDefault();
+	   $('.loading').show()
+     PSD.fromEvent(e).then(function (psd) {
+		    psd.tree().descendants().forEach(function (node) {
+			  if (node.isGroup()){
+          return
+        }
+		  	render(node)
+		  });
 
-      PSD.fromEvent(e).then(function (psd) {
-		psd.tree().descendants().forEach(function (node) {
-			if (node.isGroup()) return true;
-			render(node)
-		});
-		
+		setTimeout(function(){
+			$('.loading').hide()
+		},1)
+    
       });
     }
-	
+
+  function export_all(){  
+    var zip = new JSZip();
+    //zip.file("Hello.txt", "Hello World\n");
+    imgData.forEach(function(node){ 
+         zip.file(node.name, node.data, {base64: true}); 
+         zip.file(node.name2x, node.data2x, {base64: true});  
+    })
+    zip.generateAsync({type:"blob"}).then(function(content) {
+        saveAs(content, "images.zip");
+    });
+  }
+ 
+
 	function render(node){	
 		var $item = $('<div class="col-xs-6 col-md-3"><a class="thumbnail"></a></div>')
 		var $thumb = $item.find('.thumbnail')
-		var $img = $(node.toPng())
+    var img = node.toPng()
+		var $img = $(img)
 		//$('<p>'+ node.name +'</p>').appendTo($thumb)
 		$img.appendTo($thumb)
 		$thumb.attr({
 			'download': node.name,
-			'href': $img.attr('src'),
+			'href': img.src,
 			'target': '_blank'
 		})
+    
+    var img_base64 = img.src
+    var canvas = document.createElement('canvas')
+    canvas.width = img.width/3*2
+    canvas.height = img.height/3*2
+    canvas.getContext('2d').drawImage(img,0,0,img.width/3*2,img.height/3*2);
+    
+    imgData.push({  
+        name: node.name + '@3x.png',
+        data: img_base64.replace('data:image/png;base64,',''),
+        name2x: node.name + '@2x.png',
+        data2x: canvas.toDataURL("image/png").replace('data:image/png;base64,',''),
+    })
+    
 		$item.appendTo('#layer')
 	}
 

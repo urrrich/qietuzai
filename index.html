@@ -1,142 +1,194 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>切图仔</title>
-<meta charset="utf-8">
-<link rel="stylesheet" href="bower_components/bootstrap/dist/css/bootstrap.min.css">
-<style>
-#dropzone { border: 1px dashed #ccc; padding: 50px 0; text-align: center; border-radius: 5px }
-.row { margin-top: 20px; }
-.thumbnail{height:250px;overflow:hidden;background:#eee}
-#footer{ text-align:center}
-.loading{display:none}
-</style>
+    <title>切图仔</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="bower_components/bootstrap/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/loader.css">
+    <style>
+        .row {
+            margin-top: 20px;
+        }
+        .thumbnail {
+            height: 250px;
+            overflow: hidden;
+            background: #eee
+        }
+        .check{position: absolute;top:3px;left:22px;}
+        #dropzone {
+            border: 1px dashed #ccc;
+            padding: 50px 0;
+            text-align: center;
+            border-radius: 5px
+        }
+        #export_all {
+            margin-right: 20px;
+        }
+        #footer {
+            text-align: center
+        }
+        #loading {
+            display: none;
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: rgba(0, 0, 0, .5);
+            width: 100%;
+            height: 100%
+        }
+        .loader {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+        }
+    </style>
 </head>
 <body>
-<div class="container"> 
-  <!-- 拖拽 -->
-  <div class="row">
-    <div class="col-md-12">
-      <p>
-      切图仔demo版 by <a href="https://github.com/littleshe">littleshe</a>，转载请保留信息</p>
-      <p>感谢<a href="https://github.com/meltingice/psd.js">psd.js</a>
-      </p>
-      <div id="dropzone">
-        <h3>请拖个psd进来</h3>
-      </div>
+<div class="container">
+    <!-- 拖拽 -->
+    <div class="row">
+        <div class="col-md-12">
+            <p>
+                切图仔demo版 by <a href="https://github.com/littleshe">littleshe</a>，转载请保留信息</p>
+
+            <p>感谢<a href="https://github.com/meltingice/psd.js">psd.js</a>
+            </p>
+
+            <div id="dropzone">
+                <h3>请拖个psd进来</h3>
+            </div>
+        </div>
     </div>
-  </div>
-  <!-- 表单 -->
-  <div class="row">
-    <form class="col-md-12">
-      <button id="export_all" class="btn btn-default btn-lg" type="button" style="margin-right:20px;">导出所有图层</button>
-      <span class="psd_info"></span>
-      <label>
-        <input type="checkbox" disabled checked>
-        @2x和@3x切图</label>
-        <span class="loading">正在解析中……</span>
-    </form>
-  </div>
-  <!-- 图层 -->
-  <div class="row" id="layer"></div>
+    <!-- 表单 -->
+    <div class="row">
+        <form class="col-md-12">
+            <button id="export_all" class="btn btn-default btn-lg" type="button">导出选中图层</button>
+            <span class="psd_info"></span>
+            <label>
+                <input type="checkbox" id="check23">
+                @2x和@3x切图</label>
+        </form>
+    </div>
+    <!-- 图层 -->
+    <div class="row" id="layer"></div>
+    <div id="loading">
+        <span class="loader loader-bars"><span></span></span>
+    </div>
 </div>
+<script type="text/template" id="layer-tpl">
+{{each layers as el i}}
+    <div class="col-xs-6 col-md-3" idx="{{i}}">
+        <a class="thumbnail" title="{{el.name}}" download="{{el.name}}" href="{{el.src}}" target="_blank">
+            <img src="{{el.src}}">
+        </a>
+        <input type="checkbox" checked="{{el.checked}}" class="check">
+    </div>
+{{/each}}
+</script>
 <script src="bower_components/jquery/dist/jquery.min.js"></script>
 <script type="text/javascript" src="lib/psd.min.js"></script>
 <script type="text/javascript" src="lib/zip.min.js"></script>
 <script type="text/javascript" src="lib/filesaver.js"></script>
+<script type="text/javascript" src="lib/template.js"></script>
 <script type="text/javascript">
-  (function () {
-	 
-	/*	
-		1、拖入PSD,解析成json格式
-		2、图片裁剪@2x,@3x
-    3、单张图片导出
-    4、图片批量导出zip
-    ---------
-	*/
-	  
-    var PSD = require('psd');
-    
-    var dropArea = document.getElementById('dropzone')
-    
-    var imgData = []
-        
-    
-    dropArea.addEventListener('dragover', onDragOver, true);
-    dropArea.addEventListener('drop', onDrop, true);
-    
-    $('#export_all').click(function(){  
-      export_all()
-    })
+    (function () {
 
-    function onDragOver(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-    }
+        var PSD = require('psd')
 
-   function onDrop(e) {
-     e.stopPropagation();
-     e.preventDefault();
-	   $('.loading').show()
-     PSD.fromEvent(e).then(function (psd) {
-		    psd.tree().descendants().forEach(function (node) {
-			  if (node.isGroup()){
-          return
+        var layers = []
+
+        var dropArea = $('#dropzone')[0]
+        var exportBtn = $('#export_all')
+        var layerArea = $('#layer')
+        var checkBtn = $('#check23')
+        var loading = $('#loading')
+
+        dropArea.addEventListener('dragover', onDragOver, true);
+        dropArea.addEventListener('drop', onDrop,true)
+        layerArea.on('change','.check',selectItem)
+        exportBtn.on('click',exportAll)
+
+        function onDragOver(e) {
+            e.stopPropagation()
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
         }
-		  	render(node)
-		  });
 
-		setTimeout(function(){
-			$('.loading').hide()
-		},1)
-    
-      });
-    }
+        function onDrop(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            loading.show()
+            PSD.fromEvent(e).then(function (psd) {
+                psd.tree().descendants().forEach(function (node) {
+                    if (node.isGroup()) {
+                        return
+                    }
+                    var img = node.toPng()
+                    var imgSrc = img.src
+                    var imgData = {
+                        name: node.name,
+                        img: img,
+                        src: imgSrc,
+                        base64: getBase64(imgSrc),
+                        width: node.width,
+                        height: node.height,
+                        checked: true
+                    }
+                    layers.push(imgData)
+                });
 
-  function export_all(){  
-    var zip = new JSZip();
-    //zip.file("Hello.txt", "Hello World\n");
-    imgData.forEach(function(node){ 
-         zip.file(node.name, node.data, {base64: true}); 
-         zip.file(node.name2x, node.data2x, {base64: true});  
-    })
-    zip.generateAsync({type:"blob"}).then(function(content) {
-        saveAs(content, "images.zip");
-    });
-  }
- 
+                render({layers:layers})
 
-	function render(node){	
-		var $item = $('<div class="col-xs-6 col-md-3"><a class="thumbnail"></a></div>')
-		var $thumb = $item.find('.thumbnail')
-    var img = node.toPng()
-		var $img = $(img)
-		//$('<p>'+ node.name +'</p>').appendTo($thumb)
-		$img.appendTo($thumb)
-		$thumb.attr({
-			'download': node.name,
-			'href': img.src,
-			'target': '_blank'
-		})
-    
-    var img_base64 = img.src
-    var canvas = document.createElement('canvas')
-    canvas.width = img.width/3*2
-    canvas.height = img.height/3*2
-    canvas.getContext('2d').drawImage(img,0,0,img.width/3*2,img.height/3*2);
-    
-    imgData.push({  
-        name: node.name + '@3x.png',
-        data: img_base64.replace('data:image/png;base64,',''),
-        name2x: node.name + '@2x.png',
-        data2x: canvas.toDataURL("image/png").replace('data:image/png;base64,',''),
-    })
-    
-		$item.appendTo('#layer')
-	}
+                setTimeout(function () {
+                    loading.hide()
+                }, 1)
 
-  }());
-  </script>
+            });
+        }
+
+        function getBase64(src){
+            return src.replace('data:image/png;base64,', '')
+        }
+
+        function getScaleImgData(img,radio){
+            var img_width = img.width*radio
+            var img_height = img.height*radio
+            var canvas = document.createElement('canvas')
+            canvas.width = img_width
+            canvas.height = img_height
+            canvas.getContext('2d').drawImage(img, 0, 0, img_width, img_height)
+            return getBase64(canvas.toDataURL('image/png'))
+        }
+
+        function render(data) {
+            layerArea.html(template('layer-tpl', data))
+        }
+
+        function selectItem(){
+            var index = $(this).parent('div').attr('idx')
+            layers[index].checked = this.checked
+        }
+
+        function exportAll() {
+            if(layers.length == 0) return
+            var export_flag = checkBtn.prop('checked')
+            var zip = new JSZip();
+            layers.forEach(function (node) {
+                if(node.checked){
+                    if(export_flag){
+                        zip.file(node.name + '@3x.png', node.base64, {base64: true});
+                        zip.file(node.name + '@2x.png', getScaleImgData(node.img,2/3), {base64: true});
+                    }else{
+                        zip.file(node.name + '.png', node.base64, {base64: true});
+                    }
+                }
+            })
+            zip.generateAsync({type: "blob"}).then(function (content) {
+                saveAs(content, "images.zip");
+            });
+        }
+
+    }());
+</script>
 </body>
 </html>
